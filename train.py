@@ -41,7 +41,7 @@ parser.add_argument(
     '--superglue', choices={'indoor', 'outdoor'}, default='indoor',
     help='SuperGlue weights')
 parser.add_argument(
-    '--max_keypoints', type=int, default=1024,
+    '--max_keypoints', type=int, default=256,
     help='Maximum number of keypoints detected by Superpoint'
             ' (\'-1\' keeps all keypoints)')
 parser.add_argument(
@@ -108,7 +108,7 @@ parser.add_argument(
     '--batch_size', type=int, default=1,
     help='batch_size')
 parser.add_argument(
-    '--train_path', type=str, default='/home/yinxinjia/yingxin/dataset/COCO2014_train/', 
+    '--train_path', type=str, default='/home/linhao/data/mega_stitch_1920_dst/', 
     help='Path to the directory of training imgs.')
 parser.add_argument(
     '--epoch', type=int, default=20,
@@ -198,11 +198,11 @@ if __name__ == '__main__':
                 image0, image1 = pred['image0'].cpu().numpy()[0]*255., pred['image1'].cpu().numpy()[0]*255.
                 kpts0, kpts1 = pred['keypoints0'].cpu().numpy()[0], pred['keypoints1'].cpu().numpy()[0]
                 matches, conf = pred['matches0'].cpu().detach().numpy(), pred['matching_scores0'].cpu().detach().numpy()
-                image0 = read_image_modified(image0, opt.resize, opt.resize_float)
-                image1 = read_image_modified(image1, opt.resize, opt.resize_float)
+                # image0 = read_image_modified(image0, opt.resize, opt.resize_float)
+                # image1 = read_image_modified(image1, opt.resize, opt.resize_float)
                 valid = matches > -1
                 mkpts0 = kpts0[valid]
-                mkpts1 = kpts1[matches[valid]]
+                mkpts1 = kpts1[matches[valid]]  
                 mconf = conf[valid]
                 viz_path = eval_output_dir / '{}_matches.{}'.format(str(i), opt.viz_extension)
                 color = cm.jet(mconf)
