@@ -73,14 +73,18 @@ def normalize_keypoints(kpts, image_shape):
 
 class KeypointEncoder(nn.Module):
     """ Joint encoding of visual appearance and location using MLPs"""
+
     def __init__(self, feature_dim, layers):
         super().__init__()
         self.encoder = MLP([3] + layers + [feature_dim])
         nn.init.constant_(self.encoder[-1].bias, 0.0)
 
-    def forward(self, kpts, scores):
+    def forward(self, kpts, scores, file_name=None):
         inputs = [kpts.transpose(1, 2), scores.unsqueeze(1)]
-        return self.encoder(torch.cat(inputs, dim=1))
+        try:
+            return self.encoder(torch.cat(inputs, dim=1))
+        except:
+            raise ValueError('{} has some issues'.format(file_name))
 
 
 def attention(query, key, value):
@@ -92,6 +96,7 @@ def attention(query, key, value):
 
 class MultiHeadedAttention(nn.Module):
     """ Multi-head attention to increase model expressivitiy """
+
     def __init__(self, num_heads: int, d_model: int):
         super().__init__()
         assert d_model % num_heads == 0
@@ -230,14 +235,15 @@ class SuperGlue(nn.Module):
 
     def forward(self, data):
         """Run SuperGlue on a pair of keypoints and descriptors"""
-        desc0, desc1 = data['descriptors0'].double(), data['descriptors1'].double()
+        desc0, desc1 = data['descriptors0'].double(
+        ), data['descriptors1'].double()
         kpts0, kpts1 = data['keypoints0'].double(), data['keypoints1'].double()
 
-        desc0 = desc0.transpose(0,1)
-        desc1 = desc1.transpose(0,1)
+        desc0 = desc0.transpose(0, 1)
+        desc1 = desc1.transpose(0, 1)
         kpts0 = torch.reshape(kpts0, (1, -1, 2))
         kpts1 = torch.reshape(kpts1, (1, -1, 2))
-    
+
         if kpts0.shape[1] == 0 or kpts1.shape[1] == 0:  # no keypoints
             shape0, shape1 = kpts0.shape[:-1], kpts1.shape[:-1]
             return {
@@ -249,15 +255,18 @@ class SuperGlue(nn.Module):
             }
 
         file_name = data['file_name']
-        all_matches = data['all_matches'].permute(1,2,0) # shape=torch.Size([1, 87, 2])
-        
+        all_matches = data['all_matches'].permute(
+            1, 2, 0)  # shape=torch.Size([1, 87, 2])
+
         # Keypoint normalization.
         kpts0 = normalize_keypoints(kpts0, data['image0'].shape)
         kpts1 = normalize_keypoints(kpts1, data['image1'].shape)
 
         # Keypoint MLP encoder.
-        desc0 = desc0 + self.kenc(kpts0, torch.transpose(data['scores0'], 0, 1))
-        desc1 = desc1 + self.kenc(kpts1, torch.transpose(data['scores1'], 0, 1))
+        desc0 = desc0 + \
+            self.kenc(kpts0, torch.transpose(data['scores0'], 0, 1), file_name)
+        desc1 = desc1 + \
+            self.kenc(kpts1, torch.transpose(data['scores1'], 0, 1), file_name)
 
         # Multi-layer Transformer network.
         desc0, desc1 = self.gnn(desc0, desc1)
@@ -277,8 +286,10 @@ class SuperGlue(nn.Module):
         # Get the matches with score above "match_threshold".
         max0, max1 = scores[:, :-1, :-1].max(2), scores[:, :-1, :-1].max(1)
         indices0, indices1 = max0.indices, max1.indices
-        mutual0 = arange_like(indices0, 1)[None] == indices1.gather(1, indices0)
-        mutual1 = arange_like(indices1, 1)[None] == indices0.gather(1, indices1)
+        mutual0 = arange_like(indices0, 1)[
+            None] == indices1.gather(1, indices0)
+        mutual1 = arange_like(indices1, 1)[
+            None] == indices0.gather(1, indices1)
         zero = scores.new_tensor(0)
         mscores0 = torch.where(mutual0, max0.values.exp(), zero)
         mscores1 = torch.where(mutual1, mscores0.gather(1, indices1), zero)
@@ -292,7 +303,8 @@ class SuperGlue(nn.Module):
         for i in range(len(all_matches[0])):
             x = all_matches[0][i][0]
             y = all_matches[0][i][1]
-            loss.append(-torch.log( scores[0][x][y].exp() )) # check batch size == 1 ?
+            # check batch size == 1 ?
+            loss.append(-torch.log(scores[0][x][y].exp()))
         # for p0 in unmatched0:
         #     loss += -torch.log(scores[0][p0][-1])
         # for p1 in unmatched1:
@@ -300,8 +312,8 @@ class SuperGlue(nn.Module):
         loss_mean = torch.mean(torch.stack(loss))
         loss_mean = torch.reshape(loss_mean, (1, -1))
         return {
-            'matches0': indices0[0], # use -1 for invalid match
-            'matches1': indices1[0], # use -1 for invalid match
+            'matches0': indices0[0],  # use -1 for invalid match
+            'matches1': indices1[0],  # use -1 for invalid match
             'matching_scores0': mscores0[0],
             'matching_scores1': mscores1[0],
             'loss': loss_mean[0],
